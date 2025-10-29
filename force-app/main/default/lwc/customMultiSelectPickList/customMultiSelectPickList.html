@@ -1,0 +1,136 @@
+<!-- CustomMultiSelectPickList.html -->
+<template>
+    <template if:true={isLoading}>
+        <lightning-spinner 
+            alternative-text="Loading data" 
+            size="medium" 
+            variant="brand">
+        </lightning-spinner>
+    </template>
+    
+    <template if:false={isLoading}>
+        <template if:true={error}>
+            <div class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_error" role="alert">
+                <span class="slds-assistive-text">error</span>
+                <h2>Error loading data: {error.body.message}</h2>
+            </div>
+        </template>
+        
+        <template if:false={error}>
+            <div class="dual-listbox-container">
+                <!-- Available Options Section -->
+                <div class="listbox-section">
+                    <div class="listbox-header">
+                        <h3 class="listbox-title">Available Options</h3>
+                        <div class="selection-info">
+                            {availableCount} items available
+                        </div>
+                    </div>
+                    <div class="listbox-content">
+                        <div class="groups-container">
+                            <template for:each={processedData} for:item="groupData">
+                                <div key={groupData.groupName} class="group-item" data-group={groupData.groupName}>
+                                    <!-- Group Header with Toggle -->
+                                    <div class="group-header" data-group={groupData.groupName} onclick={toggleGroup}>
+                                        <div class="group-checkbox-container">
+                                            <input 
+                                                type="checkbox" 
+                                                class="group-checkbox"
+                                                data-group={groupData.groupName}
+                                                onclick={stopPropagation}
+                                                checked={groupData.isAllSelected}
+                                                onchange={handleGroupSelect}
+                                            />
+                                            <label class="group-label" onclick={stopPropagation}>{groupData.groupName}</label>
+                                        </div>
+                                        <div class="toggle-icon">
+                                            <span>{groupData.toggleIcon}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Items List (Collapsible) -->
+                                    <div class={groupData.itemsClass}>
+                                        <template for:each={groupData.items} for:item="item">
+                                            <div key={item.id} class="item-row" if:false={item.isSelected}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    class="item-checkbox"
+                                                    data-group={groupData.groupName}
+                                                    data-item-id={item.id}
+                                                    data-item-name={item.name}
+                                                />
+                                                <label class="item-label">{item.name}</label>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button class="action-btn move-right" onclick={moveSelectedToChosen} disabled={isMoveRightDisabled} title="Add selected items">
+                        <span class="arrow-icon">▶</span>
+                    </button>
+                    <button class="action-btn move-left" onclick={moveChosenToAvailable} disabled={isMoveLeftDisabled} title="Remove selected items">
+                        <span class="arrow-icon">◀</span>
+                    </button>
+                </div>
+                
+                <!-- Selected Options Section -->
+                <div class="listbox-section">
+                    <div class="listbox-header">
+                        <h3 class="listbox-title">Selected Options</h3>
+                        <div class="selection-info">
+                            {selectedCount} items selected
+                        </div>
+                    </div>
+                    <div class="listbox-content">
+                        <div class="selected-items-container">
+                            <template if:false={hasSelectedItems}>
+                                <div class="empty-state">
+                                    <span class="empty-text">No items selected</span>
+                                </div>
+                            </template>
+                            <template if:true={hasSelectedItems}>
+                                <template for:each={selectedItemsDisplay} for:item="groupData">
+                                    <div key={groupData.groupName} class="selected-group-item">
+                                        <!-- Group Header with Toggle -->
+                                        <div class="selected-group-header" data-group={groupData.groupName} onclick={toggleSelectedGroup}>
+                                            <div class="selected-group-info">
+                                                <span class="selected-group-label">{groupData.groupName}</span>
+                                                <span class="selected-group-count">({groupData.items.length})</span>
+                                            </div>
+                                            <div class="selected-group-actions">
+                                                <button class="remove-group-btn" data-group={groupData.groupName} onclick={removeGroup} title="Remove entire group">
+                                                    ×
+                                                </button>
+                                                <div class="toggle-icon">
+                                                    <span>{groupData.toggleIcon}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Items List (Collapsible) -->
+                                        <div class={groupData.itemsClass}>
+                                            <template for:each={groupData.items} for:item="item">
+                                                <div key={item.id} class="selected-item-row" data-item-id={item.id} onclick={selectChosenItem}>
+                                                    <span class="selected-item-name">{item.name}</span>
+                                                    <button class="remove-btn" data-item-id={item.id} data-item-name={item.name} onclick={removeItem} title="Remove item">
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </template>
+</template>
