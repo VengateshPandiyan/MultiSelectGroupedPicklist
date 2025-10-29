@@ -48,7 +48,7 @@ import { LightningElement, api } from 'lwc';
 export default class ParentComponent extends LightningElement {
     // Configuration
     dataQuery = 'SELECT Id, Name, Category__c FROM Product2 WHERE IsActive = true';
-    groupByField = 'Region__c';
+    groupByField = 'Category__c';
     displayField = 'Name';
     selectedRecords = [];
 
