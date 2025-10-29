@@ -3,6 +3,8 @@
 ## Overview
 A reusable Lightning Web Component that creates a dual-listbox interface for selecting multiple records from any Salesforce object. The component automatically fetches data via SOQL, groups records by a specified field, and provides an intuitive selection interface.
 
+<img width="999" height="607" alt="Image" src="https://github.com/user-attachments/assets/1717b1bf-f11d-4274-b9f0-c681ddee9aa2" />
+
 ## Features
 - Automatic data fetching via SOQL query
 - Groups records by any field
