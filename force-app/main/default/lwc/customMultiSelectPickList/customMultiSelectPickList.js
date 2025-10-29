@@ -1,26 +1,25 @@
-// CustomMultiSelectPickList.js
 import { LightningElement, api, wire, track } from 'lwc';
 import executeDynamicQuery from '@salesforce/apex/LightningUtils.executeDynamicQuery';
 
 export default class CustomMultiSelectPickList extends LightningElement {
-    // Public API properties
+    // Public API properties for query-based data fetching
     @api query; // SOQL query string from parent
     @api groupBy; // Field API name to group by
     @api pickValues; // Field API name for display values
     
-    // Private properties - using @track for complex objects
+    // Private properties
     _preSelectedRecords = [];
     @track processedData = [];
     @track selectedItems = [];
     @track selectedGroupsData = [];
+    tempSelectedItems = []; // For tracking items selected in available list
+    tempChosenItems = []; // For tracking items selected in chosen list
     isLoading = true;
     error = null;
 
     // Wire adapter to execute the query
     @wire(executeDynamicQuery, { query: '$query' })
     wiredData({ error, data }) {
-
-        
         if (data) {
             this.isLoading = false;
             this.error = null;
@@ -36,17 +35,13 @@ export default class CustomMultiSelectPickList extends LightningElement {
             console.error('Error loading data:', error);
             this.processedData = [];
         } else {
-            // Still loading
             this.isLoading = true;
         }
     }
 
     // Process query results into grouped structure
     processQueryResults(data) {
-        console.log('Processing query results:', data);
-        
         if (!data || !Array.isArray(data)) {
-            console.log('No data or data is not an array');
             this.processedData = [];
             return;
         }
@@ -55,35 +50,22 @@ export default class CustomMultiSelectPickList extends LightningElement {
         
         // Process each record
         data.forEach(record => {
-            // Get group name, defaulting to 'Unassigned' if null/undefined
             const groupName = this.groupBy ? (record[this.groupBy] || 'Unassigned') : 'Default Group';
-            
-            // Get display value and ID
             const displayValue = this.pickValues ? record[this.pickValues] : record.Name || record.Id;
             const recordId = record.Id;
             
-            console.log('Processing record:', { groupName, displayValue, recordId });
+            if (!recordId) return;
             
-            // Skip if no ID
-            if (!recordId) {
-                console.log('Skipping record with no ID');
-                return;
-            }
-            
-            // Initialize group array if it doesn't exist
             if (!groupMap.has(groupName)) {
                 groupMap.set(groupName, []);
             }
             
-            // Add item to the group
             groupMap.get(groupName).push({
                 name: displayValue,
                 id: recordId,
                 isSelected: false
             });
         });
-        
-        console.log('Group map created:', groupMap);
         
         // Convert Map to array format for rendering
         const tempData = [];
@@ -99,7 +81,6 @@ export default class CustomMultiSelectPickList extends LightningElement {
         });
         
         this.processedData = tempData;
-        console.log('Final processed data:', this.processedData);
     }
 
     // Getter/Setter for selected records from parent
@@ -110,7 +91,6 @@ export default class CustomMultiSelectPickList extends LightningElement {
 
     set selectedRecords(value) {
         this._preSelectedRecords = value || [];
-        // Restore selection if we have data
         if (this.processedData.length > 0 && this._preSelectedRecords.length > 0) {
             this.restoreSelection();
         }
@@ -122,13 +102,12 @@ export default class CustomMultiSelectPickList extends LightningElement {
             return;
         }
 
-        // Create a Set of selected IDs for faster lookup
         const selectedIds = new Set(this._preSelectedRecords.map(record => record.id));
+        this.selectedItems = this._preSelectedRecords.map(record => ({
+            name: record.name,
+            id: record.id
+        }));
 
-        // Update selectedItems with the pre-selected records
-        this.selectedItems = [...this._preSelectedRecords];
-
-        // Update processedData to reflect the selection state
         const updatedData = [];
         this.processedData.forEach(group => {
             const updatedItems = group.items.map(item => ({
@@ -136,7 +115,6 @@ export default class CustomMultiSelectPickList extends LightningElement {
                 isSelected: selectedIds.has(item.id)
             }));
 
-            // Check if all items in group are selected
             const allSelected = updatedItems.length > 0 && 
                                 updatedItems.every(item => item.isSelected);
 
@@ -148,8 +126,6 @@ export default class CustomMultiSelectPickList extends LightningElement {
         });
         
         this.processedData = updatedData;
-
-        // Update the selected groups data structure
         this.updateSelectedGroupsData();
     }
 
@@ -157,7 +133,6 @@ export default class CustomMultiSelectPickList extends LightningElement {
     updateSelectedGroupsData() {
         const groupsMap = new Map();
         
-        // Group selected items by their groups
         this.processedData.forEach(group => {
             const selectedInGroup = group.items.filter(item => 
                 this.selectedItems.some(si => si.id === item.id)
@@ -182,7 +157,7 @@ export default class CustomMultiSelectPickList extends LightningElement {
         this.selectedGroupsData = tempSelectedGroups;
     }
 
-    // Computed properties for template
+    // Computed properties
     get hasSelectedItems() {
         return this.selectedItems.length > 0;
     }
@@ -204,15 +179,11 @@ export default class CustomMultiSelectPickList extends LightningElement {
     }
 
     get isMoveRightDisabled() {
-        // Check if any checkbox in available list is checked
-        const checkboxes = this.template.querySelectorAll('.listbox-section:first-child .item-checkbox:checked');
-        return checkboxes.length === 0;
+        return this.tempSelectedItems.length === 0;
     }
 
     get isMoveLeftDisabled() {
-        // Check if any item in selected list is highlighted
-        const selectedRows = this.template.querySelectorAll('.selected-item-row.selected');
-        return selectedRows.length === 0;
+        return this.tempChosenItems.length === 0;
     }
 
     // Event handlers
@@ -262,6 +233,7 @@ export default class CustomMultiSelectPickList extends LightningElement {
         this.selectedGroupsData = updatedGroups;
     }
 
+    // Handle group checkbox selection - EXACTLY FROM YOUR ORIGINAL
     handleGroupSelect(event) {
         event.stopPropagation();
         const groupName = event.target.dataset.group;
@@ -270,14 +242,29 @@ export default class CustomMultiSelectPickList extends LightningElement {
         const updatedData = [];
         this.processedData.forEach(group => {
             if (group.groupName === groupName) {
-                // Update all checkboxes in the group
-                const checkboxes = this.template.querySelectorAll(
-                    `.group-item[data-group="${groupName}"] .item-checkbox`
-                );
-                checkboxes.forEach(cb => cb.checked = isChecked);
+                const updatedItems = group.items.map(item => ({
+                    ...item,
+                    isSelected: isChecked
+                }));
+                
+                // Update selected items array
+                if (isChecked) {
+                    // Add all items from this group
+                    const itemsToAdd = updatedItems
+                        .filter(item => !this.selectedItems.some(si => si.id === item.id))
+                        .map(item => ({ name: item.name, id: item.id }));
+                    this.selectedItems = [...this.selectedItems, ...itemsToAdd];
+                } else {
+                    // Remove all items from this group
+                    const itemsToRemove = updatedItems.map(item => item.id);
+                    this.selectedItems = this.selectedItems.filter(
+                        item => !itemsToRemove.includes(item.id)
+                    );
+                }
                 
                 updatedData.push({
                     ...group,
+                    items: updatedItems,
                     isAllSelected: isChecked
                 });
             } else {
@@ -286,48 +273,58 @@ export default class CustomMultiSelectPickList extends LightningElement {
         });
         
         this.processedData = updatedData;
+        this.updateSelectedGroupsData();
+        this.emitSelectionEvent();
     }
 
-    moveSelectedToChosen() {
-        // Get all checked items from available list
-        const checkedBoxes = this.template.querySelectorAll('.listbox-section:first-child .item-checkbox:checked');
-        if (checkedBoxes.length === 0) return;
+    // Handle individual item selection - EXACTLY FROM YOUR ORIGINAL
+    handleItemSelect(event) {
+        event.stopPropagation();
+        const itemId = event.target.dataset.itemId;
+        const isChecked = event.target.checked;
         
-        const itemsToAdd = [];
-        const existingIds = new Set(this.selectedItems.map(i => i.id));
-        
-        checkedBoxes.forEach(checkbox => {
-            const itemId = checkbox.dataset.itemId;
-            const itemName = checkbox.dataset.itemName;
-            
-            if (!existingIds.has(itemId)) {
-                itemsToAdd.push({ name: itemName, id: itemId });
+        if (isChecked) {
+            if (!this.tempSelectedItems.includes(itemId)) {
+                this.tempSelectedItems = [...this.tempSelectedItems, itemId];
             }
-            
-            // Uncheck the checkbox
-            checkbox.checked = false;
+        } else {
+            this.tempSelectedItems = this.tempSelectedItems.filter(id => id !== itemId);
+        }
+    }
+
+    // Move selected items from available to chosen - EXACTLY FROM YOUR ORIGINAL
+    moveSelectedToChosen() {
+        if (this.tempSelectedItems.length === 0) return;
+        
+        // Build a map of id -> item from processed data
+        const idToItem = new Map();
+        this.processedData.forEach(group => {
+            group.items.forEach(item => {
+                idToItem.set(item.id, item);
+            });
         });
+        
+        // Add temp selected items to chosen list
+        const existingIds = new Set(this.selectedItems.map(i => i.id));
+        const itemsToAdd = this.tempSelectedItems
+            .map(id => idToItem.get(id))
+            .filter(i => i && !existingIds.has(i.id))
+            .map(i => ({ name: i.name, id: i.id }));
         
         this.selectedItems = [...this.selectedItems, ...itemsToAdd];
         
-        // Update processed data
+        // Update processed data to mark these items as selected
         const updatedData = [];
         this.processedData.forEach(group => {
             const updatedItems = group.items.map(item => {
-                if (itemsToAdd.some(added => added.id === item.id)) {
+                if (this.tempSelectedItems.includes(item.id)) {
                     return { ...item, isSelected: true };
                 }
                 return item;
             });
             
+            // Check if all items in group are now selected
             const allSelected = updatedItems.every(item => item.isSelected);
-            
-            // Update group checkbox
-            const groupCheckbox = this.template.querySelector(`.group-checkbox[data-group="${group.groupName}"]`);
-            if (groupCheckbox) {
-                groupCheckbox.checked = allSelected;
-            }
-            
             updatedData.push({
                 ...group,
                 items: updatedItems,
@@ -336,43 +333,34 @@ export default class CustomMultiSelectPickList extends LightningElement {
         });
         
         this.processedData = updatedData;
+        
+        // Clear temp selection
+        this.tempSelectedItems = [];
         this.updateSelectedGroupsData();
         this.emitSelectionEvent();
     }
 
+    // Move selected items from chosen to available - EXACTLY FROM YOUR ORIGINAL
     moveChosenToAvailable() {
-        // Get all selected items from chosen list
-        const selectedRows = this.template.querySelectorAll('.selected-item-row.selected');
-        if (selectedRows.length === 0) return;
+        if (this.tempChosenItems.length === 0) return;
         
-        const itemsToRemove = [];
-        selectedRows.forEach(row => {
-            itemsToRemove.push(row.dataset.itemId);
-            row.classList.remove('selected');
-        });
-        
+        // Remove temp chosen items from selected list
         this.selectedItems = this.selectedItems.filter(
-            item => !itemsToRemove.includes(item.id)
+            item => !this.tempChosenItems.includes(item.id)
         );
         
-        // Update processed data
+        // Update processed data to mark these items as unselected
         const updatedData = [];
         this.processedData.forEach(group => {
             const updatedItems = group.items.map(item => {
-                if (itemsToRemove.includes(item.id)) {
+                if (this.tempChosenItems.includes(item.id)) {
                     return { ...item, isSelected: false };
                 }
                 return item;
             });
             
+            // Update group selection status
             const allSelected = updatedItems.every(item => item.isSelected);
-            
-            // Update group checkbox
-            const groupCheckbox = this.template.querySelector(`.group-checkbox[data-group="${group.groupName}"]`);
-            if (groupCheckbox) {
-                groupCheckbox.checked = allSelected;
-            }
-            
             updatedData.push({
                 ...group,
                 items: updatedItems,
@@ -381,13 +369,23 @@ export default class CustomMultiSelectPickList extends LightningElement {
         });
         
         this.processedData = updatedData;
+        
+        // Clear temp selection
+        this.tempChosenItems = [];
         this.updateSelectedGroupsData();
         this.emitSelectionEvent();
     }
 
     selectChosenItem(event) {
-        const row = event.currentTarget;
-        row.classList.toggle('selected');
+        const itemId = event.currentTarget.dataset.itemId;
+        
+        if (this.tempChosenItems.includes(itemId)) {
+            this.tempChosenItems = this.tempChosenItems.filter(id => id !== itemId);
+            event.currentTarget.classList.remove('selected');
+        } else {
+            this.tempChosenItems = [...this.tempChosenItems, itemId];
+            event.currentTarget.classList.add('selected');
+        }
     }
 
     removeItem(event) {
@@ -396,7 +394,6 @@ export default class CustomMultiSelectPickList extends LightningElement {
         
         this.selectedItems = this.selectedItems.filter(item => item.id !== itemIdToRemove);
         
-        // Update the processedData
         const updatedData = [];
         this.processedData.forEach(group => {
             const updatedItems = group.items.map(item => {
@@ -407,13 +404,6 @@ export default class CustomMultiSelectPickList extends LightningElement {
             });
             
             const allSelected = updatedItems.every(item => item.isSelected);
-            
-            // Update group checkbox
-            const groupCheckbox = this.template.querySelector(`.group-checkbox[data-group="${group.groupName}"]`);
-            if (groupCheckbox) {
-                groupCheckbox.checked = allSelected;
-            }
-            
             updatedData.push({
                 ...group,
                 items: updatedItems,
@@ -430,7 +420,6 @@ export default class CustomMultiSelectPickList extends LightningElement {
         event.stopPropagation();
         const groupToRemove = event.target.dataset.group;
         
-        // Find all items in this group and remove them
         const updatedData = [];
         this.processedData.forEach(group => {
             if (group.groupName === groupToRemove) {
@@ -443,12 +432,6 @@ export default class CustomMultiSelectPickList extends LightningElement {
                     ...item,
                     isSelected: false
                 }));
-                
-                // Update group checkbox
-                const groupCheckbox = this.template.querySelector(`.group-checkbox[data-group="${group.groupName}"]`);
-                if (groupCheckbox) {
-                    groupCheckbox.checked = false;
-                }
                 
                 updatedData.push({
                     ...group,
@@ -472,7 +455,9 @@ export default class CustomMultiSelectPickList extends LightningElement {
                     name: i.name, 
                     id: i.id 
                 }))
-            }
+            },
+            bubbles: true,
+            composed: true
         });
         this.dispatchEvent(selectionEvent);
     }
@@ -487,15 +472,9 @@ export default class CustomMultiSelectPickList extends LightningElement {
     resetSelections() {
         this.selectedItems = [];
         this.selectedGroupsData = [];
+        this.tempSelectedItems = [];
+        this.tempChosenItems = [];
         this._preSelectedRecords = [];
-        
-        // Uncheck all checkboxes
-        const allCheckboxes = this.template.querySelectorAll('.item-checkbox, .group-checkbox');
-        allCheckboxes.forEach(cb => cb.checked = false);
-        
-        // Remove selected class from chosen items
-        const selectedRows = this.template.querySelectorAll('.selected-item-row.selected');
-        selectedRows.forEach(row => row.classList.remove('selected'));
         
         const updatedData = [];
         this.processedData.forEach(group => {
